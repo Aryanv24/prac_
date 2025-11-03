@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Basic Login (session cookie demo)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; display:flex; min-height:100vh; align-items:center; justify-content:center; background:#f6f8fa; margin:0; }
+    .card { background:white; padding:20px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.08); width:320px; }
+    input { width:100%; padding:8px; margin:8px 0; border:1px solid #ddd; border-radius:4px; }
+    button { width:100%; padding:10px; border:none; border-radius:6px; cursor:pointer; }
+    #status { margin-top:12px; font-size:0.95rem }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h3>Login</h3>
+    <form id="loginForm">
+      <input type="text" id="username" placeholder="username" required />
+      <input type="password" id="password" placeholder="password" required />
+      <button type="submit">Log in</button>
+    </form>
+
+    <div style="margin-top:10px;">
+      <button id="profileBtn" style="margin-bottom:8px;">Check Profile (protected)</button>
+      <button id="logoutBtn">Logout</button>
+    </div>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const status = document.getElementById('status');
+
+    function show(msg, ok=true) {
+      status.textContent = msg;
+      status.style.color = ok ? 'green' : 'crimson';
+    }
+
+    // On login submit
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          show('Logged in. Session cookie set (HttpOnly).');
+        } else {
+          show(data.message || 'Login failed', false);
+        }
+      } catch (err) {
+        console.error(err);
+        show('Network error', false);
+      }
+    });
+
+    // Check profile (protected)
+    document.getElementById('profileBtn').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/profile', { method: 'GET', credentials: 'same-origin' });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          show('Authenticated: ' + (data.user.displayName || data.user.username));
+        } else {
+          show('Not authenticated', false);
+        }
+      } catch (err) {
+        console.error(err);
+        show('Network error', false);
+      }
+    });
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      try {
+        const res = await fetch('/logout', { method: 'POST', credentials: 'same-origin' });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+          show('Logged out; session cleared.');
+        } else {
+          show(data.message || 'Logout failed', false);
+        }
+      } catch (err) {
+        console.error(err);
+        show('Network error', false);
+      }
+    });
+  </script>
+</body>
+</html>
+
+
+server.js
+
+const express = require('express');
+const session = require('express-session');
+const bodyParser = require('body-parser');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Simple in-memory "user" for demo.
+// DO NOT use plain-text passwords in production.
+const DEMO_USER = { username: 'user', password: 'pass', displayName: 'Demo User' };
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// Serve static files (index.html + client JS from /public)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Session config
+app.use(session({
+  name: 'sid', // cookie name
+  secret: process.env.SESSION_SECRET || 'dev-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,      // not accessible from JS
+    secure: false,       // set true if using HTTPS (production)
+    sameSite: 'lax',
+    maxAge: 30 * 60 * 1000 // 30 minutes
+  }
+}));
+
+// POST /login -> validate credentials and create session
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ ok: false, message: 'Missing username/password' });
+
+  // Demo check
+  if (username === DEMO_USER.username && password === DEMO_USER.password) {
+    // create session data
+    req.session.user = { username: DEMO_USER.username, displayName: DEMO_USER.displayName };
+    return res.json({ ok: true, message: 'Logged in' });
+  }
+
+  return res.status(401).json({ ok: false, message: 'Invalid credentials' });
+});
+
+// POST /logout -> destroy session and clear cookie
+app.post('/logout', (req, res) => {
+  // destroy session server-side
+  req.session.destroy(err => {
+    if (err) {
+      console.error('Session destroy error:', err);
+      return res.status(500).json({ ok: false, message: 'Logout failed' });
+    }
+    // Clear the cookie on client by instructing browser to remove cookie
+    // Using same name as session cookie ('sid' from session config)
+    res.clearCookie('sid', { path: '/' });
+    return res.json({ ok: true, message: 'Logged out' });
+  });
+});
+
+// GET /profile -> protected route requiring session
+app.get('/profile', (req, res) => {
+  if (req.session && req.session.user) {
+    return res.json({ ok: true, user: req.session.user });
+  }
+  return res.status(401).json({ ok: false, message: 'Not authenticated' });
+});
+
+app.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
+});
