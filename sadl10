@@ -1,0 +1,43 @@
+Sign in to GitHub.
+
+Click your profile → Settings.
+
+Left menu → Developer settings → Personal access tokens → Generate new token (choose Fine-grained token or Classic if only Classic shown).
+
+Give it a name (e.g., lab-token-<date>).
+
+Set an expiry (30 or 90 days is fine for practice).
+
+Select minimal scopes:
+
+For repo push/pull: repo (or in fine-grained: repo-specific Read & write).
+
+Click Generate token.
+
+Copy the token now (you will not see it again). Save it in a password manager or a temporary secure place for the exam.
+
+
+
+Step 2: Open your project folder in terminal
+cd path/to/your/project
+
+🧩 Step 3: Initialize and commit
+git init
+git add .
+git commit -m "Initial commit"
+
+🧩 Step 4: Connect to GitHub using HTTPS
+git remote add origin https://github.com/<your-username>/<repo>.git
+
+🧩 Step 5: Push using the PAT
+git branch -M main
+git push -u origin main
+
+
+When asked:
+
+Username: your GitHub username
+
+Password: paste your PAT
+
+🎉 If it pushes successfully → you’ve demonstrated secure authentication.
